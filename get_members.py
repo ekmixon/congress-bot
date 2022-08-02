@@ -28,8 +28,16 @@ headers = {
 
 state_postal = "CA"
 
-senate_resp = requests.get('https://api.propublica.org/congress/v1/members/senate/'+ state_postal +'/current.json', headers=headers)
-house_resp = requests.get('https://api.propublica.org/congress/v1/members/house/'+ state_postal +'/current.json', headers=headers)
+senate_resp = requests.get(
+    f'https://api.propublica.org/congress/v1/members/senate/{state_postal}/current.json',
+    headers=headers,
+)
+
+house_resp = requests.get(
+    f'https://api.propublica.org/congress/v1/members/house/{state_postal}/current.json',
+    headers=headers,
+)
+
 
 
 # ## set list of all members w all data
@@ -49,12 +57,14 @@ member_data = []
 
 def get_member_data(member_list):
     for member in member_list:
-        d = {}
-        d["twitter_id"] = member["twitter_id"]
-        d["party"] = member["party"]
-        d["id"] = member["id"]
-        d["role"] = member["role"]
-        d["name"] = member["name"]
+        d = {
+            "twitter_id": member["twitter_id"],
+            "party": member["party"],
+            "id": member["id"],
+            "role": member["role"],
+            "name": member["name"],
+        }
+
         member_data.append(d)
         
 get_member_data(all_members_list)

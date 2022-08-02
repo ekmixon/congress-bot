@@ -24,16 +24,12 @@ ofile.close()
 
 # ### just get member ids
 
-member_ids = []
-
-for member in member_list:
-    member_ids.append(member["id"])
-
+member_ids = [member["id"] for member in member_list]
 
 # ### pull all statements for these members from today
 # loop through all pages for today
 
-date = str(datetime.today().strftime('%Y-%m-%d'))
+date = str(datetime.now().strftime('%Y-%m-%d'))
 # date = "2018-10-5"
 
 all_recent_member_statements = []
@@ -43,7 +39,8 @@ num_results = 20
 max_results = 20
 
 while num_results == max_results:
-    link = "https://api.propublica.org/congress/v1/statements/date/" + date + ".json?offset=" + str(offset)
+    link = f"https://api.propublica.org/congress/v1/statements/date/{date}.json?offset={str(offset)}"
+
 
     all_recent_member_statements = all_recent_member_statements + json.loads(requests.get(link, headers=headers).text)["results"]
 
@@ -52,11 +49,12 @@ while num_results == max_results:
 
 ### pull statements for these members
 
-all_statements = []
+all_statements = [
+    statement
+    for statement in all_recent_member_statements
+    if statement["member_id"] in member_ids
+]
 
-for statement in all_recent_member_statements:
-    if statement["member_id"] in member_ids:
-        all_statements.append(statement)
 
 # ### identify statements made since last statement tracked
 
@@ -64,8 +62,8 @@ prev_statements = []
 
 # check if a file exists for today
 
-if os.path.isfile('data/' + date + '_statements.json'):
-    with open('data/' + date + '_statements.json', 'r') as ofile:
+if os.path.isfile(f'data/{date}_statements.json'):
+    with open(f'data/{date}_statements.json', 'r') as ofile:
         prev_statements = json.loads(ofile.read())
     ofile.close()
 
@@ -89,17 +87,25 @@ for statement in new_statements:
     try:
         full_name = '.@' + member_dict["twitter_id"] + ' (' + member_dict["party"] + ')'
     except:
-        full_name = member_dict["role"][0:3] + '. ' + member_dict["name"] + ' (' + member_dict["party"] + ')'
+        full_name = (
+            member_dict["role"][:3]
+            + '. '
+            + member_dict["name"]
+            + ' ('
+            + member_dict["party"]
+            + ')'
+        )
 
-    if statement["title"] == None:
+
+    if statement["title"] is None:
         t_text = t_text + full_name + ' made a statement: '
     else:
         t_text = t_text + full_name + ' made a statement: "' + statement["title"] + '" '
 
     if len(t_text) > allowed_text_length:
-        t_text = t_text[0:allowed_text_length] + '... '
+        t_text = t_text[:allowed_text_length] + '... '
 
-    t_text = t_text + statement["url"]
+    t_text += statement["url"]
 
     statement["t_text"] = t_text
 
@@ -120,7 +126,7 @@ for statement in new_statements:
     statement_id = statement["date"] + statement["member_id"] + statement["title"]
     prev_statements.append(statement_id)
 
-with open('data/' + date + '_statements.json', 'w') as ofile:
+with open(f'data/{date}_statements.json', 'w') as ofile:
     ofile.write(json.dumps(prev_statements))
 ofile.close()
 
@@ -129,11 +135,11 @@ ofile.close()
 path = 'data/'
 
 for file in os.listdir('.'):
-    if fnmatch.fnmatch(file, '*' + '_statements.json'):
-
-        if datetime.strptime(file.split('_statements')[0], "%Y-%m-%d") < (date.today() - timedelta(30)):
-            print(file)
-            os.remove(os.path.join(path,file))
+    if fnmatch.fnmatch(file, '*' + '_statements.json') and datetime.strptime(
+        file.split('_statements')[0], "%Y-%m-%d"
+    ) < (date.today() - timedelta(30)):
+        print(file)
+        os.remove(os.path.join(path,file))
 
 
 

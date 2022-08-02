@@ -34,11 +34,7 @@ ofile.close()
 # In[5]:
 
 
-member_ids = []
-
-for member in member_list:
-    member_ids.append(member["id"])
-
+member_ids = [member["id"] for member in member_list]
 
 # ### pull all votes for these members
 
@@ -48,13 +44,19 @@ for member in member_list:
 all_recent_member_votes = []
 
 for member_id in member_ids:
-    recent_member_votes = json.loads(requests.get("https://api.propublica.org/congress/v1/members/"+ member_id +"/votes.json", headers=headers).text)["results"]
+    recent_member_votes = json.loads(
+        requests.get(
+            f"https://api.propublica.org/congress/v1/members/{member_id}/votes.json",
+            headers=headers,
+        ).text
+    )["results"]
+
     recent_member_votes = recent_member_votes[0]["votes"]
 #     pprint(recent_member_votes)
     all_recent_member_votes.append(recent_member_votes)                                 
-    
-    
-    
+
+
+
 
 
 # ### identify votes cast since last vote tracked
@@ -72,10 +74,11 @@ ofile.close()
 new_votes = []
 
 for member in all_recent_member_votes:
-    for vote in member:
-        if vote["roll_call"] > last_votes[vote["member_id"]]:
-            new_votes.append(vote)
-
+    new_votes.extend(
+        vote
+        for vote in member
+        if vote["roll_call"] > last_votes[vote["member_id"]]
+    )
 
 # ### craft the tweet text from vote dit
 
@@ -91,41 +94,53 @@ allowed_text_length = max_tweet_len - link_len - 5
 for vote in new_votes:
     t_text = ""
     member_dict = [x for x in member_list if x["id"] == vote["member_id"]][0]
-#     full_name = member_dict["role"][0:3] + ". " + member_dict["name"] + " (" + member_dict["party"] + ")" 
+#     full_name = member_dict["role"][0:3] + ". " + member_dict["name"] + " (" + member_dict["party"] + ")"
     try:
-        full_name = ".@" + member_dict["twitter_id"] + " (" + member_dict["party"] + ")" 
+        full_name = ".@" + member_dict["twitter_id"] + " (" + member_dict["party"] + ")"
     except:
-        full_name = member_dict["role"][0:3] + ". " + member_dict["name"] + " (" + member_dict["party"] + ")" 
+        full_name = (
+            member_dict["role"][:3]
+            + ". "
+            + member_dict["name"]
+            + " ("
+            + member_dict["party"]
+            + ")"
+        )
+
     if vote["position"].lower() != "not voting":
         t_text = t_text + full_name + " voted "
-        t_text = t_text + vote['position'].lower()
+        t_text += vote['position'].lower()
     else:
         t_text = t_text = t_text + full_name + " did not vote"
-    t_text = t_text + " on "
-    t_text = t_text + vote["bill"]['number']  
+    t_text = f"{t_text} on "
+    t_text = t_text + vote["bill"]['number']
     if vote['bill']['title'] != None:
-        t_text = t_text + ', ' + vote['bill']['title'].replace("A bill", "a bill")
-    
+        t_text = f'{t_text}, ' + vote['bill']['title'].replace("A bill", "a bill")
 #     if this is a nomination
     if 'nomination' in vote:
-        t_text = t_text + ": the nomination of " + vote["description"]
-    
+        t_text = f"{t_text}: the nomination of " + vote["description"]
+
     if len(t_text) > allowed_text_length:
-        t_text = t_text[0:allowed_text_length] + "... "
-        
+        t_text = t_text[:allowed_text_length] + "... "
+
     congress_ord = congress_conversions[vote["congress"]]
     bill_nums =  [x for x in list(vote["bill"]["number"]) if x.isdigit()]
     bill_num = "".join(bill_nums)
     bill_chamber = "senate"
     if "H" in vote['bill']['number'].upper():
         bill_chamber = "house"
-    congress_gov_url = "https://www.congress.gov/bill/"+ congress_ord +"-congress/" + bill_chamber + "-bill/"+ bill_num
+    congress_gov_url = f"https://www.congress.gov/bill/{congress_ord}-congress/{bill_chamber}-bill/{bill_num}"
+
     if 'nomination' in vote:
-        congress_gov_url = "https://www.congress.gov/nomination/"+ congress_ord +"-congress/" + vote["nomination"]["number"][2:]
-    
-    t_text = t_text + " " + congress_gov_url
+        congress_gov_url = (
+            f"https://www.congress.gov/nomination/{congress_ord}-congress/"
+            + vote["nomination"]["number"][2:]
+        )
+
+
+    t_text = f"{t_text} {congress_gov_url}"
     vote["t_text"] = t_text
-    
+
 
 
 # ### send the tweets
@@ -137,21 +152,17 @@ for vote in new_votes:
 auth = tweepy.OAuthHandler(os.environ["T_CONSUMER_KEY"],os.environ["T_CONSUMER_SECRET"])
 auth.set_access_token(os.environ["T_ACCESS_TOKEN"],os.environ["T_ACCESS_TOKEN_SECRET"])
 api = tweepy.API(auth)
-    
-    
+
+
 sleep_time = (30 * 60)/len(new_votes)
-if sleep_time > 30:
-    sleep_time = 30
-
-
-
+sleep_time = min(sleep_time, 30)
 for vote in new_votes:
     try:
         api.update_status(status=vote["t_text"])
     except:
         pass
     time.sleep(sleep_time)
-    
+
 
 
 # ### track the last vote for each member
@@ -159,11 +170,12 @@ for vote in new_votes:
 # In[18]:
 
 
-most_recent_roll_calls = {}
+most_recent_roll_calls = {
+    member[0]["member_id"]: member[0]["roll_call"]
+    for member in all_recent_member_votes
+}
 
-for member in all_recent_member_votes:
-    most_recent_roll_calls[member[0]["member_id"]] = member[0]["roll_call"]
-    
+
 with open('data/last_votes.json', 'w') as ofile:
     ofile.write(json.dumps(most_recent_roll_calls))
 ofile.close()

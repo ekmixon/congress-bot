@@ -35,11 +35,7 @@ ofile.close()
 # In[24]:
 
 
-member_ids = []
-
-for member in member_list:
-    member_ids.append(member["id"])
-
+member_ids = [member["id"] for member in member_list]
 
 # ### get most recent bills passed
 
@@ -49,20 +45,19 @@ for member in member_list:
 future_cong = True
 this_cong = 123
 
-while future_cong == True:
-    resp_json = json.loads(requests.get("https://api.propublica.org/congress/v1/"+ str(this_cong) +"/house/bills/passed.json", headers=headers).text)
+while future_cong:
+    resp_json = json.loads(
+        requests.get(
+            f"https://api.propublica.org/congress/v1/{str(this_cong)}/house/bills/passed.json",
+            headers=headers,
+        ).text
+    )
+
     if resp_json["status"] == "500":
         this_cong = this_cong - 1
     else:
         future_cong = False
 
-
-# ### filter to just this state bills AND that have not been tweeted
-
-# In[26]:
-
-
-this_state_bills = []
 
 tweeted_bill_ids = []
 
@@ -70,10 +65,12 @@ with open('data/tweeted_bills_passed.json', "r") as ofile:
     tweeted_bill_ids = json.loads(ofile.read())
 ofile.close()
 
-for bill in resp_json["results"][0]['bills']:
-    if bill["sponsor_id"] in member_ids and bill["bill_id"] not in tweeted_bill_ids:
-        this_state_bills.append(bill)
-
+this_state_bills = [
+    bill
+    for bill in resp_json["results"][0]['bills']
+    if bill["sponsor_id"] in member_ids
+    and bill["bill_id"] not in tweeted_bill_ids
+]
 
 # In[27]:
 
@@ -94,62 +91,71 @@ allowed_text_length = max_tweet_len - link_len - 5
 
 for bill in this_state_bills:
     member_dict = [x for x in member_list if x["id"] == bill["sponsor_id"]][0]
-    
+
     try:
-        full_name = "@" + member_dict["twitter_id"] + " (" + member_dict["party"] + ")" 
+        full_name = "@" + member_dict["twitter_id"] + " (" + member_dict["party"] + ")"
     except:
-        full_name = member_dict["role"][0:3] + ". " + member_dict["name"] + " (" + member_dict["party"] + ")" 
-    
+        full_name = (
+            member_dict["role"][:3]
+            + ". "
+            + member_dict["name"]
+            + " ("
+            + member_dict["party"]
+            + ")"
+        )
+         
+
     house_pass = False
     sen_pass = False
-    
+
     if bill['house_passage'] != None:
         house_pass = True
     if bill['senate_passage'] != None:
         sen_pass = True
-        
-    
+
+
     today_format = datetime.strftime(date.today(), "%Y-%m-%d")
     yesterday_format = datetime.strftime(date.today() - timedelta(1), "%Y-%m-%d")
-        
-        
+
+
     if today_format not in [bill['house_passage'], bill['senate_passage']] and yesterday_format not in [bill['house_passage'], bill['senate_passage']]:
         continue
-    
-        
-        
-        
+
+
+
+
     t_text = ""
-    
+
     t_text = t_text + bill["number"] + ", introduced by "
     t_text = t_text + full_name + ", "
-    
-    if house_pass == True and sen_pass == True:
-        t_text = t_text + "has passed the House and the Senate."
-    elif house_pass == True:
-        t_text = t_text + "has passed the House."
-    elif sen_pass == True:
-        t_text = t_text + "has passed the Senate."
+
+    if house_pass and sen_pass:
+        t_text += "has passed the House and the Senate."
+    elif house_pass:
+        t_text += "has passed the House."
+    elif sen_pass:
+        t_text += "has passed the Senate."
     else:
         continue
-        
-    
+
+
     if len(t_text) > allowed_text_length:
-        t_text = t_text[0:allowed_text_length] + "... "
-        
-        
+        t_text = t_text[:allowed_text_length] + "... "
+                
+
     congress_ord = congress_conversions[str(this_cong)]
     bill_nums =  [x for x in list(bill["number"]) if x.isdigit()]
     bill_num = "".join(bill_nums)
     bill_chamber = "senate"
     if "H" in bill['number'].upper():
         bill_chamber = "house"
-    congress_gov_url = "https://www.congress.gov/bill/"+ congress_ord +"-congress/" + bill_chamber + "-bill/"+ bill_num
-    
-    t_text = t_text + " " + congress_gov_url
-    
-    
-    
+    congress_gov_url = f"https://www.congress.gov/bill/{congress_ord}-congress/{bill_chamber}-bill/{bill_num}"
+
+
+    t_text = f"{t_text} {congress_gov_url}"
+        
+        
+
     bill["t_text"] = t_text
 
 
@@ -162,13 +168,13 @@ for bill in this_state_bills:
 auth = tweepy.OAuthHandler(os.environ["T_CONSUMER_KEY"],os.environ["T_CONSUMER_SECRET"])
 auth.set_access_token(os.environ["T_ACCESS_TOKEN"],os.environ["T_ACCESS_TOKEN_SECRET"])
 api = tweepy.API(auth)
-    
-    
+
+
 for bill in this_state_bills:
     if "t_text" in bill:
         api.update_status(status=bill["t_text"])
         time.sleep(60)
-    
+
 
 
 # ### log that the bills been tweeted
@@ -176,11 +182,8 @@ for bill in this_state_bills:
 # In[30]:
 
 
-bill_ids = []
+bill_ids = [bill["bill_id"] for bill in this_state_bills]
 
-for bill in this_state_bills:
-    bill_ids.append(bill["bill_id"]) 
-    
 tweeted_bill_ids = tweeted_bill_ids + bill_ids
 
 with open('data/tweeted_bills_passed.json', 'w') as ofile:
